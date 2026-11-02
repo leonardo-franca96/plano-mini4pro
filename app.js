@@ -11,7 +11,7 @@
   // ---------- Estado ----------
 
   function blank() {
-    return { name: "Plano", polygon: [], takeoff: null, params: { ...DEFAULTS.params }, useTerrain: true, showPhotos: false, djiNames: {}, view: null };
+    return { v: 2, name: "Plano", polygon: [], takeoff: null, params: { ...DEFAULTS.params }, useTerrain: true, showPhotos: false, djiNames: {}, view: null };
   }
   let state = load() || blank();
   let undo = [];
@@ -21,8 +21,14 @@
   function load() {
     try {
       const s = JSON.parse(localStorage.getItem(STORE_KEY));
-      return s && Array.isArray(s.polygon) ? { ...blank(), ...s, params: { ...DEFAULTS.params, ...s.params } } : null;
+      return s && Array.isArray(s.polygon) ? fromSaved(s) : null;
     } catch { return null; }
+  }
+  function fromSaved(s) {
+    const params = { ...DEFAULTS.params, ...s.params };
+    // Planos salvos antes da v2 vinham em "Temporizada", que não fotografa sozinha no DJI Fly.
+    if (s.v !== 2) params.photoMode = DEFAULTS.params.photoMode;
+    return { ...blank(), ...s, v: 2, params };
   }
   let saveTimer = 0;
   function persist() {
@@ -313,8 +319,8 @@
     const timed = p.photoMode === "TIMED";
     $("modeTimed").classList.toggle("on", timed); $("modePoint").classList.toggle("on", !timed);
     $("modeHint").textContent = timed
-      ? (s.photoIntervalS ? `Voo contínuo. Ligue a foto temporizada a cada ${Math.round(s.photoIntervalS)} s ao chegar no primeiro ponto; o DJI Fly não dispara fotos sozinho a partir do arquivo.` : "Voo contínuo com foto temporizada.")
-      : "O drone para e fotografa sozinho em cada ponto. Fotos mais nítidas, voo mais lento e mais pontos.";
+      ? (s.photoIntervalS ? `Atenção: neste modo o drone NÃO fotografa sozinho. Voo contínuo; você precisa ligar a foto temporizada de ${Math.round(s.photoIntervalS)} s no DJI Fly ao chegar no primeiro ponto.` : "Atenção: neste modo o drone não fotografa sozinho; ligue a foto temporizada no DJI Fly.")
+      : "Recomendado. O drone para e fotografa sozinho em cada ponto. Fotos mais nítidas; voo mais lento e mais partes.";
     $("battery").value = p.batteryMinutes; $("batteryOut").textContent = `${Math.round(p.batteryMinutes)} min`;
     // Área
     $("btnUndo").disabled = !undo.length;
@@ -471,7 +477,7 @@
     try {
       const d = JSON.parse(await f.text());
       if (!Array.isArray(d.polygon)) throw new Error();
-      state = { ...blank(), ...d, params: { ...DEFAULTS.params, ...d.params } };
+      state = fromSaved(d);
       undo = []; terrain.box = null;
       changed(); fit(); toast(`Plano “${state.name}” aberto.`);
     } catch { toast("Arquivo inválido: escolha um projeto salvo por esta página (.json)."); }
