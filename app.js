@@ -148,7 +148,9 @@
   const empty = { type: "FeatureCollection", features: [] };
   const pt = ([lat, lon], props = {}) => ({ type: "Feature", properties: props, geometry: { type: "Point", coordinates: [lon, lat] } });
 
-  map.on("load", () => {
+  // Camadas assim que o estilo existe, sem esperar as imagens de satélite (o estilo embutido pode já estar pronto).
+  function setupLayers() {
+    if (map.getSource("area")) return;
     for (const id of ["area", "lines", "photos", "vertices", "takeoff", "start"]) map.addSource(id, { type: "geojson", data: empty });
     map.addLayer({ id: "area-fill", type: "fill", source: "area", paint: { "fill-color": "#ff922b", "fill-opacity": 0.16 } });
     map.addLayer({ id: "area-line", type: "line", source: "area", paint: { "line-color": "#ff922b", "line-width": 2.5 } });
@@ -163,7 +165,10 @@
     map.addLayer({ id: "takeoff-dot", type: "circle", source: "takeoff", paint: { "circle-radius": 3.5, "circle-color": "#ffffff" } });
     if (state.polygon.length && !state.view) fit();
     changed(false);
-  });
+  }
+  if (map.isStyleLoaded()) setupLayers();
+  map.on("style.load", setupLayers);
+  map.on("load", setupLayers);
   map.on("moveend", () => { const c = map.getCenter(); state.view = { center: [c.lng, c.lat], zoom: map.getZoom() }; persist(); });
 
   function fit() {
@@ -272,15 +277,16 @@
 
   // ---------- Cálculo e painel ----------
 
-  let raf = 0;
+  let pending = 0;
   function compute() {
     snap = JSON.parse(Core.compute(coreState(), elevation(), !!state.showPhotos));
     draw(); render();
   }
   function changed(save = true, fast = false) {
     if (save) persist();
-    cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(() => { compute(); if (!fast) ensureTerrain(); });
+    // setTimeout (e não requestAnimationFrame): o cálculo roda mesmo com o mapa travado ou a aba em segundo plano.
+    clearTimeout(pending);
+    pending = setTimeout(() => { compute(); if (!fast) ensureTerrain(); }, 16);
   }
 
   function render() {
@@ -514,5 +520,7 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
   }
 
+  // Calcula já ao abrir (área salva), sem depender do mapa carregar.
   render();
+  changed(false);
 })();
